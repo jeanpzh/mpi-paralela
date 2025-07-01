@@ -1,0 +1,16 @@
+services:
+  # Backend Service (FastAPI)
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: parallel_exam_backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app/backend
+      - ./mpi_processor:/app/mpi_processor
+
+    env_file:
+      - ./backend/.env
+    restart: unless-stopped

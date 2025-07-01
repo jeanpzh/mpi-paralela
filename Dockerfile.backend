@@ -1,0 +1,30 @@
+# Stage 1: Use a more complete base image that includes build tools
+FROM python:3.10-bullseye
+
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE 1
+ENV PYTHONUNBUFFERED 1
+
+# Install system dependencies including OpenMPI
+RUN apt-get update && apt-get install -y --no-install-recommends openmpi-bin libopenmpi-dev && rm -rf /var/lib/apt/lists/*
+
+# Set up the working directory
+WORKDIR /app
+
+# Copy the entire project context
+COPY . .
+
+# Install Python dependencies from the backend requirements file
+RUN pip install --no-cache-dir -r backend/requirements.txt
+
+# Compile the MPI processor
+RUN make -C mpi_processor
+
+# Expose the port the app runs on
+EXPOSE 8000
+
+# Set the entrypoint to the backend directory for running the app
+WORKDIR /app/backend
+
+# Command to run the application
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"] 
