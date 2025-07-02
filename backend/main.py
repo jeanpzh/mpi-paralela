@@ -1,5 +1,7 @@
-from fastapi import FastAPI, Depends, HTTPException, BackgroundTasks
+from fastapi import FastAPI, Depends, HTTPException, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional
 import uuid
@@ -38,6 +40,38 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# Exception handlers
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """Handle validation errors with more user-friendly messages."""
+    for error in exc.errors():
+        if error["type"] == "uuid_parsing" and "exam_id" in str(error.get("loc", [])):
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "detail": f"ID de examen inválido. Por favor, proporciona un UUID válido en lugar de '{error.get('input', '')}'.",
+                    "error_type": "invalid_exam_id",
+                    "suggestion": "Verifica que estés usando un ID de examen válido en formato UUID."
+                }
+            )
+        elif error["type"] == "uuid_parsing":
+            field_name = error.get("loc", [])[-1] if error.get("loc") else "ID"
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "detail": f"{field_name} inválido. Se esperaba un UUID válido.",
+                    "error_type": "invalid_uuid",
+                    "suggestion": "Verifica que el ID esté en formato UUID válido."
+                }
+            )
+    
+    # Default validation error response
+    return JSONResponse(
+        status_code=422,
+        content={"detail": exc.errors()}
+    )
 
 
 # Startup and shutdown events
@@ -105,6 +139,28 @@ async def list_exams(
     exam_manager = ExamManager(db)
     exams = await exam_manager.list_exams(skip=skip, limit=limit)
     return exams
+
+
+@app.get("/api/v1/exams/with-evaluation-stats", response_model=List[Exam], tags=["Exams"])
+async def list_exams_with_evaluation_stats(
+    skip: int = 0,
+    limit: int = 100,
+    db: AsyncSession = Depends(get_db_session)
+):
+    """List all exams with their evaluation statistics."""
+    try:
+        exam_manager = ExamManager(db)
+        exams = await exam_manager.list_exams(skip=skip, limit=limit)
+        
+        # Para cada examen, agregar estadísticas si están disponibles
+        enriched_exams = []
+        for exam in exams:
+            # Opcional: agregar estadísticas de evaluación aquí si es necesario
+            enriched_exams.append(exam)
+        
+        return enriched_exams
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @app.get("/api/v1/exams/{exam_id}", response_model=Exam, tags=["Exams"])
@@ -313,6 +369,7 @@ async def evaluate_exam(
 @app.get("/api/v1/reports/exam-stats/{exam_id}", response_model=ExamStatsResponse, tags=["Reports"])
 async def get_exam_statistics(
     exam_id: uuid.UUID,
+    include_evaluation_stats: bool = False,
     db: AsyncSession = Depends(get_db_session),
     user: dict = Depends(require_admin_user)
 ):
