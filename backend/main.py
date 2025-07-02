@@ -371,7 +371,7 @@ async def get_exam_statistics(
     exam_id: uuid.UUID,
     include_evaluation_stats: bool = False,
     db: AsyncSession = Depends(get_db_session),
-    user: dict = Depends(require_admin_user)
+    
 ):
     """Get comprehensive exam statistics."""
     try:
